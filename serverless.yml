@@ -1,0 +1,62 @@
+service: sockets-poc
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: 'us-east-1'
+  stage: ${opt:stage, 'dev'}
+  timeout: 30
+  provider:
+    websocketApiRouteSelectionExpression: $request.body.action
+  environment:
+    SOCKETS_TABLE: sockets_${self:provider.stage}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource: [
+            "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.SOCKETS_TABLE}",
+            "arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.SOCKETS_TABLE}/index/*"
+          ]
+
+functions:
+  connection: 
+    handler: src/handler.socket
+    events:
+      - websocket: 
+          route: $connect
+      - websocket: 
+          route: $disconnect
+      - websocket: 
+          route: $default
+  
+plugins:
+  - serverless-plugin-typescript
+  - serverless-dynamodb
+  - serverless-offline
+
+custom:
+  serverless-dynamodb:
+    port: 8000
+    docker: false
+    stages:
+      - ${self:provider.stage}
+    start:
+      port: 8000
+      inMemory: true
+      heapInitial: 200m
+      heapMax: 1g
+      migrate: true
+      seed: true
+      convertEmptyValues: true
+
+resources:
+  - ${file(resources/socketsTable.yml)}  
